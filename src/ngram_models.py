@@ -79,7 +79,7 @@ def _counts_to_joint_probabilities(ngram_counts: Mapping[str, int]) -> Dict[str,
 
 
 def _counts_to_conditional_probabilities(
-    prefix_to_next: Mapping[str, Mapping[str, int]]
+        prefix_to_next: Mapping[str, Mapping[str, int]]
 ) -> Dict[str, Dict[str, float]]:
     conditional: Dict[str, Dict[str, float]] = {}
     for prefix, next_counts in prefix_to_next.items():
@@ -98,11 +98,11 @@ def build_char_ngram_model(text: str, n: int) -> Tuple[Dict[str, float], Dict[st
 
 
 def generate_char_sequence(
-    start: str,
-    conditional_probabilities: Mapping[str, Mapping[str, float]],
-    target_length: int,
-    order: int,
-    rng: random.Random | None = None,
+        start: str,
+        conditional_probabilities: Mapping[str, Mapping[str, float]],
+        target_length: int,
+        order: int,
+        rng: random.Random | None = None,
 ) -> str:
     """Generate a string of characters using the provided conditional probabilities.
 
@@ -152,9 +152,9 @@ def generate_char_sequence(
 
 
 def evaluate_char_sequence_probability(
-    sequence: str,
-    conditional_probabilities: Mapping[str, Mapping[str, float]],
-    order: int,
+        sequence: str,
+        conditional_probabilities: Mapping[str, Mapping[str, float]],
+        order: int,
 ) -> float:
     """Compute the average conditional probability for the provided sequence.
 
@@ -215,10 +215,10 @@ def build_word_bigram_model(words: Sequence[str]) -> Tuple[Dict[Tuple[str, str],
 
 
 def generate_word_sequence(
-    start_words: Iterable[str],
-    conditional_probabilities: Mapping[str, Mapping[str, float]],
-    target_length: int,
-    rng: random.Random | None = None,
+        start_words: Iterable[str],
+        conditional_probabilities: Mapping[str, Mapping[str, float]],
+        target_length: int,
+        rng: random.Random | None = None,
 ) -> List[str]:
     """Generate a sequence of words from a conditional probability table."""
 
@@ -249,8 +249,8 @@ def generate_word_sequence(
 
 
 def evaluate_word_sequence_probability(
-    sequence: Sequence[str],
-    conditional_probabilities: Mapping[str, Mapping[str, float]],
+        sequence: Sequence[str],
+        conditional_probabilities: Mapping[str, Mapping[str, float]],
 ) -> float:
     """Return the geometric mean of conditional probabilities for a word sequence."""
 
