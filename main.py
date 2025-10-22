@@ -14,10 +14,39 @@ python main.py input.txt --char-length 250 --word-length 250 --seed 1234
 from __future__ import annotations
 
 import argparse
-import json
 import random
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Tuple
+from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
+
+
+def format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
+    """Return an ASCII table given *headers* and *rows*."""
+
+    if not headers:
+        return ""
+
+    string_rows: List[List[str]] = [list(map(str, headers))]
+    for row in rows:
+        string_rows.append([str(cell) for cell in row])
+
+    widths = [max(len(row[i]) for row in string_rows) for i in range(len(headers))]
+
+    def render_row(row: Sequence[str]) -> str:
+        return " | ".join(cell.ljust(widths[i]) for i, cell in enumerate(row))
+
+    separator = "-+-".join("-" * width for width in widths)
+
+    lines = [render_row(string_rows[0]), separator]
+    for row in string_rows[1:]:
+        lines.append(render_row(row))
+    return "\n".join(lines)
+
+
+def print_table(headers: Sequence[str], rows: Sequence[Sequence[str]], indent: int = 0) -> None:
+    table = format_table(headers, rows)
+    indent_str = " " * indent
+    for line in table.splitlines():
+        print(f"{indent_str}{line}")
 
 from src.ngram_models import (
     build_char_ngram_model,
@@ -33,13 +62,20 @@ from src.ngram_models import (
 
 def summarise_conditional_distribution(
     conditional: Mapping[str, Mapping[str, float]], sample_size: int = 5
-) -> Dict[str, Dict[str, float]]:
+) -> List[Tuple[str, List[Tuple[str, float]]]]:
     """Return a deterministic sample of conditional probabilities."""
 
-    sampled = {}
-    for prefix in sorted(conditional.keys())[:sample_size]:
+    sampled: List[Tuple[str, List[Tuple[str, float]]]] = []
+    if sample_size <= 0:
+        prefixes = sorted(conditional.keys())
+    else:
+        prefixes = sorted(conditional.keys())[:sample_size]
+    for prefix in prefixes:
         transitions = conditional[prefix]
-        sampled[prefix] = dict(sorted(transitions.items(), key=lambda item: item[1], reverse=True)[:sample_size])
+        sorted_transitions = sorted(transitions.items(), key=lambda item: item[1], reverse=True)
+        if sample_size > 0:
+            sorted_transitions = sorted_transitions[:sample_size]
+        sampled.append((prefix, sorted_transitions))
     return sampled
 
 
@@ -75,6 +111,15 @@ def parse_arguments() -> argparse.Namespace:
         default=5,
         help="Number of prefixes displayed when summarising conditional probabilities",
     )
+    parser.add_argument(
+        "--max-variations",
+        type=int,
+        default=0,
+        help=(
+            "Maximum number of alternative character continuations displayed per seed. "
+            "Use 0 to show all available transitions."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -93,14 +138,18 @@ def main() -> None:
         print(f"\nModelo de caracteres de orden {order}:")
         print(f"  n-gramas únicos: {len(joint)}")
         if joint:
-            most_probable = sorted(joint.items(), key=lambda item: item[1], reverse=True)[:5]
+            limit = len(joint) if args.sample_size <= 0 else min(args.sample_size, len(joint))
+            most_probable = sorted(joint.items(), key=lambda item: item[1], reverse=True)[:limit]
             print("  Principales probabilidades conjuntas:")
-            for gram, prob in most_probable:
-                print(f"    {gram!r}: {prob:.4f}")
+            rows = [(repr(gram), f"{prob:.4f}") for gram, prob in most_probable]
+            print_table(["n-grama", "P(n-grama)"], rows, indent=4)
         if conditional:
             print("  Muestra de probabilidades condicionales:")
             sample = summarise_conditional_distribution(conditional, args.sample_size)
-            print(json.dumps(sample, indent=4, ensure_ascii=False))
+            for prefix, transitions in sample:
+                print(f"    Contexto {prefix!r}:")
+                rows = [(repr(next_char), f"{prob:.4f}") for next_char, prob in transitions]
+                print_table(["Siguiente", "P(siguiente|contexto)"], rows, indent=8)
         else:
             print("  No hay transiciones suficientes para este orden.")
 
@@ -110,14 +159,22 @@ def main() -> None:
     print(f"  Número de palabras únicas: {len(set(words))}")
     print(f"  Bigramas únicos: {len(word_joint)}")
     if word_joint:
-        most_probable_words = sorted(word_joint.items(), key=lambda item: item[1], reverse=True)[:5]
+        word_limit = len(word_joint) if args.sample_size <= 0 else min(args.sample_size, len(word_joint))
+        most_probable_words = sorted(word_joint.items(), key=lambda item: item[1], reverse=True)[
+            :word_limit
+        ]
         print("  Principales probabilidades conjuntas de palabras:")
-        for (w1, w2), prob in most_probable_words:
-            print(f"    ('{w1}', '{w2}'): {prob:.4f}")
+        word_rows = [
+            (f"('{w1}', '{w2}')", f"{prob:.4f}") for (w1, w2), prob in most_probable_words
+        ]
+        print_table(["Bigramas", "P(bigrama)"], word_rows, indent=4)
     if word_conditional:
         sample_word_cond = summarise_conditional_distribution(word_conditional, args.sample_size)
         print("  Muestra de probabilidades condicionales de palabras:")
-        print(json.dumps(sample_word_cond, indent=4, ensure_ascii=False))
+        for prefix, transitions in sample_word_cond:
+            print(f"    Palabra '{prefix}':")
+            rows = [(next_word, f"{prob:.4f}") for next_word, prob in transitions]
+            print_table(["Siguiente", "P(siguiente|palabra)"], rows, indent=8)
     else:
         print("  No hay transiciones suficientes para palabras.")
 
@@ -133,6 +190,48 @@ def main() -> None:
         print(f"\nOrden {order} (inicio '{seed}'):")
         print(f"  Texto generado ({len(generated)} caracteres):\n    {generated}")
         print(f"  Promedio geométrico de P(siguiente|contexto): {probability:.4f}")
+
+        prefix_length = order - 1
+        prefix = seed[-prefix_length:] if prefix_length > 0 else ""
+        transitions = conditional.get(prefix, {})
+        if transitions:
+            sorted_transitions = sorted(transitions.items(), key=lambda item: item[1], reverse=True)
+            print("  Probabilidades de los posibles siguientes caracteres:")
+            transition_rows = [
+                (repr(next_char), f"{prob:.4f}") for next_char, prob in sorted_transitions
+            ]
+            print_table(["Siguiente", "P(siguiente|contexto)"], transition_rows, indent=4)
+
+            print("  Variaciones generadas para cada posible siguiente caracter:")
+            max_variations = len(sorted_transitions)
+            if args.max_variations > 0:
+                max_variations = min(args.max_variations, max_variations)
+
+            for idx, (next_char, next_prob) in enumerate(sorted_transitions[:max_variations]):
+                variation_seed = seed + next_char
+                variation_rng = random.Random(args.seed + order * 100 + idx)
+                variation_text = generate_char_sequence(
+                    variation_seed,
+                    conditional,
+                    args.char_length,
+                    order,
+                    rng=variation_rng,
+                )
+                variation_probability = evaluate_char_sequence_probability(
+                    variation_text, conditional, order
+                )
+                display_char = repr(next_char)
+                print(f"    Variante con siguiente {display_char}:")
+                print(f"      Inicio extendido: {variation_seed}")
+                print(f"      P({display_char}|{prefix!r}) = {next_prob:.4f}")
+                print(
+                    "      Promedio geométrico de P(siguiente|contexto): "
+                    f"{variation_probability:.4f}"
+                )
+                print(f"      Texto generado ({len(variation_text)} caracteres):")
+                print(f"        {variation_text}")
+        else:
+            print("  No hay transiciones disponibles para el contexto dado.")
 
     print("\nGeneración de texto basada en palabras:")
     word_seeds = {
