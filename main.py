@@ -14,10 +14,8 @@ python main.py input.txt --char-length 250 --word-length 250 --seed 1234
 from __future__ import annotations
 
 import argparse
-import json
 import random
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Tuple
 
 from src.ngram_models import (
     build_char_ngram_model,
@@ -33,13 +31,9 @@ from src.ngram_models import (
 
 def summarise_conditional_distribution(
     conditional: Mapping[str, Mapping[str, float]], sample_size: int = 5
-) -> Dict[str, Dict[str, float]]:
     """Return a deterministic sample of conditional probabilities."""
 
-    sampled = {}
-    for prefix in sorted(conditional.keys())[:sample_size]:
         transitions = conditional[prefix]
-        sampled[prefix] = dict(sorted(transitions.items(), key=lambda item: item[1], reverse=True)[:sample_size])
     return sampled
 
 
@@ -93,14 +87,10 @@ def main() -> None:
         print(f"\nModelo de caracteres de orden {order}:")
         print(f"  n-gramas únicos: {len(joint)}")
         if joint:
-            most_probable = sorted(joint.items(), key=lambda item: item[1], reverse=True)[:5]
             print("  Principales probabilidades conjuntas:")
-            for gram, prob in most_probable:
-                print(f"    {gram!r}: {prob:.4f}")
         if conditional:
             print("  Muestra de probabilidades condicionales:")
             sample = summarise_conditional_distribution(conditional, args.sample_size)
-            print(json.dumps(sample, indent=4, ensure_ascii=False))
         else:
             print("  No hay transiciones suficientes para este orden.")
 
@@ -110,14 +100,10 @@ def main() -> None:
     print(f"  Número de palabras únicas: {len(set(words))}")
     print(f"  Bigramas únicos: {len(word_joint)}")
     if word_joint:
-        most_probable_words = sorted(word_joint.items(), key=lambda item: item[1], reverse=True)[:5]
         print("  Principales probabilidades conjuntas de palabras:")
-        for (w1, w2), prob in most_probable_words:
-            print(f"    ('{w1}', '{w2}'): {prob:.4f}")
     if word_conditional:
         sample_word_cond = summarise_conditional_distribution(word_conditional, args.sample_size)
         print("  Muestra de probabilidades condicionales de palabras:")
-        print(json.dumps(sample_word_cond, indent=4, ensure_ascii=False))
     else:
         print("  No hay transiciones suficientes para palabras.")
 
